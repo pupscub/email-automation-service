@@ -90,9 +90,6 @@ python -m tests.test_ngrok https://<your-ngrok-https>
 python -m tests.test_e2e
 ```
 
-### Test Output Screenshots
-Add the screenshots under `docs/images/` with the following names to render them below.
-
 1) Ngrok validation test
 
 ![Ngrok test](assets/test_ngrok.png)
