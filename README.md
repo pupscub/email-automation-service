@@ -95,15 +95,15 @@ Add the screenshots under `docs/images/` with the following names to render them
 
 1) Ngrok validation test
 
-![Ngrok test](docs/images/test_ngrok.png)
+![Ngrok test](assets/images/test_ngrok.png)
 
 2) End‑to‑end test (starts ngrok, starts monitoring, sends email, verifies draft)
 
-![E2E test](docs/images/test_e2e.png)
+![E2E test](assets/images/test_e2e.png)
 
 3) Local endpoints test
 
-![Local test](docs/images/test_local.png)
+![Local test](assets/images/test_local.png)
 
 ### Endpoints (high level)
 - `GET /` UI; Start/Stop buttons and recent drafts panel
