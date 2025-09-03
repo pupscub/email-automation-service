@@ -1,64 +1,78 @@
 """Centralized prompt builders for the AI email assistant.
 
 Edit these functions to tune tone and strategy without changing service code.
+
+Guardrails (applies to every prompt):
+- Ground every statement strictly in the evidence provided. Do NOT invent facts,
+  figures, dates, prices, policies, or availability.
+- If information is missing or uncertain, ask a concise clarifying question or omit it.
+- Never propose specific dates/times unless they appear in the evidence. Do not
+  fabricate calendar availability.
+- Keep replies concise, professional, and action‑oriented.
 """
+
+SYSTEM_PROMPT = (
+    "You are a professional email assistant. Ground every statement strictly in "
+    "the provided evidence (current email, similar emails, additional context, and citations). "
+    "Do not invent facts, figures, prices, commitments, dates, or availability. "
+    "If something is not present in the evidence, either ask a concise clarifying "
+    "question or omit it. Never propose dates/times unless explicitly present in the evidence. "
+    "Prefer concise, courteous, and unambiguous language."
+)
 
 def build_prompt_simple(current_context: str) -> str:
     return f"""
-You are an intelligent email assistant. Generate a professional email reply to the following email:
+Using only the evidence below, write a professional reply.
 
-EMAIL TO REPLY TO:
+EVIDENCE — CURRENT EMAIL
 {current_context}
 
-Generate a contextually appropriate reply that:
-1. Addresses the main points in the email
-2. Maintains a professional and helpful tone
-3. Is concise and actionable
-4. Uses the person's name if available
-5. Asks clarifying questions if the request is unclear
+Requirements:
+- Use only facts present in the evidence. Do not invent details.
+- If information is missing, ask a concise clarifying question.
+- Never propose specific dates/times unless they appear in the evidence.
+- Keep it concise, helpful, and actionable.
 
 Reply:"""
 
 
 def build_prompt_with_similar(current_context: str, similar_context: str) -> str:
     return f"""
-You are an intelligent email assistant. Generate a professional email reply based on the current email and a similar response from email history.
+Using only the evidence below, write a professional reply.
 
-CURRENT EMAIL:
+EVIDENCE — CURRENT EMAIL
 {current_context}
 
-SIMILAR PREVIOUS EMAIL:
+EVIDENCE — SIMILAR PREVIOUS EMAIL
 {similar_context}
 
-Generate a contextually appropriate reply that:
-1. References the similar response style and content when relevant
-2. Addresses the specific points in the current email
-3. Maintains a professional tone
-4. Is concise and actionable
-5. Uses the person's name if available
+Requirements:
+- Use only facts present in the evidence. Do not invent details.
+- If information is missing, ask a concise clarifying question.
+- Never propose specific dates/times unless they appear in the evidence.
+- Keep it concise, helpful, and actionable.
 
 Reply:"""
 
 
 def build_prompt_with_history(current_context: str, similar_context: str, history_context: str) -> str:
     return f"""
-You are an intelligent email assistant. Generate a professional reply based on the current email, a similar previous email, and additional context (prior messages and drafts with this sender).
+Using only the evidence below, write a professional reply.
 
-CURRENT EMAIL:
+EVIDENCE — CURRENT EMAIL
 {current_context}
 
-SIMILAR PREVIOUS EMAIL:
+EVIDENCE — SIMILAR PREVIOUS EMAIL
 {similar_context}
 
-ADDITIONAL CONTEXT (PRIOR MESSAGES & DRAFTS WITH THIS SENDER):
+EVIDENCE — PRIOR MESSAGES & DRAFTS WITH THIS SENDER
 {history_context}
 
-Generate a concise, accurate reply that:
-1. Leverages prior answers and maintains consistency
-2. Addresses the current email specifically
-3. Maintains a professional, helpful tone
-4. Uses the recipient's name if available
-5. Asks clarifying questions only if necessary
+Requirements:
+- Ground every statement strictly in the evidence above. Do not invent facts.
+- If evidence is insufficient, ask a concise clarifying question instead of guessing.
+- Never propose specific dates/times unless explicitly present in the evidence.
+- Keep it concise, consistent with prior replies, and action‑oriented.
 
 Reply:"""
 

@@ -16,6 +16,9 @@ class Config(BaseModel):
     host: str = "localhost"
     port: int = 8000
     debug: bool = True
+    # Retrieval / indexing
+    index_path: str = "mail_index.sqlite"
+    embeddings_enabled: bool = False
     
     @classmethod
     def from_env(cls) -> "Config":
@@ -30,6 +33,8 @@ class Config(BaseModel):
             host=os.getenv("HOST", "localhost"),
             port=int(os.getenv("PORT", "8000")),
             debug=os.getenv("DEBUG", "true").lower() == "true"
+            ,index_path=os.getenv("INDEX_PATH", "mail_index.sqlite")
+            ,embeddings_enabled=os.getenv("EMBEDDINGS_ENABLED", "false").lower() == "true"
         )
 
 config = Config.from_env()

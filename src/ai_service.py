@@ -6,6 +6,7 @@ from src.prompts import (
     build_prompt_simple,
     build_prompt_with_similar,
     build_prompt_with_history,
+    SYSTEM_PROMPT,
 )
 
 class AIService:
@@ -90,7 +91,7 @@ class AIService:
             response = self.client.chat.completions.create(
                 model="gpt-4",
                 messages=[
-                    {"role": "system", "content": "You are a professional email assistant that generates helpful, contextually appropriate email replies."},
+                    {"role": "system", "content": SYSTEM_PROMPT},
                     {"role": "user", "content": prompt}
                 ],
                 max_tokens=500,

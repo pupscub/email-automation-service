@@ -90,6 +90,11 @@ python -m tests.test_ngrok https://<your-ngrok-https>
 python -m tests.test_e2e
 ```
 
+- Retrieval and citations (seeds a temp index and verifies results):
+```bash
+python -m tests.test_retrieval
+```
+
 1) Ngrok validation test
 
 ![Ngrok test](assets/test_ngrok.png)
@@ -139,15 +144,18 @@ email-automation/
 │   ├── auth.py              # MSAL auth
 │   ├── graph_client.py      # Graph calls
 │   ├── ai_service.py        # OpenAI reply generator
+│   ├── prompts.py           # Prompt templates and system rules
+│   ├── indexer.py           # SQLite indexer for mailbox metadata
+│   ├── retrieval.py         # Retrieval with citations
+│   ├── verifier.py          # Heuristic verifier for risky content
 │   └── webhook_handler.py   # Webhook processing
 ├── tests/
 │   ├── __init__.py
 │   ├── test_local.py        # local endpoints
 │   ├── test_ngrok.py        # ngrok reachability
-│   └── test_e2e.py          # automated E2E
+│   ├── test_e2e.py          # automated E2E
+│   └── test_retrieval.py    # retrieval & citations
 ├── main.py                  # FastAPI app & routes
-├── requirements.txt
-├── setup.py                 # optional helper
 ├── .env.example
 └── README.md
 ```

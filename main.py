@@ -126,6 +126,7 @@ async def root():
                                   <summary style=\"cursor:pointer;\"><strong>View Draft</strong></summary>
                                   <div style=\"padding:8px 0; white-space:pre-wrap;\">${{i.draft_preview}}</div>
                                 </details>
+                                ${'${(i.citations && i.citations.length) ? `<div style=\\"margin-top:8px;\\"><strong>Citations:</strong><ul style=\\"margin:4px 0;\\">` + i.citations.map(c => `<li>${c.subject || "(no subject)"} — ${c.date || ""}</li>`).join("") + `</ul></div>` : ``}'}
                             </div>
                         `).join('');
                         container.innerHTML = html;
@@ -381,6 +382,15 @@ async def debug_messages_raw():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/debug/retrieval")
+async def debug_retrieval(q: str = "test", sender: str | None = None):
+    try:
+        from src.retrieval import retrieve_citations
+        terms = [w for w in q.split() if len(w) > 2][:6]
+        items = retrieve_citations(terms, sender=sender, top_k=5)
+        return {"ok": True, "count": len(items), "items": items}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 @app.get("/debug/me")
 async def debug_me():
     try:
