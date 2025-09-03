@@ -9,6 +9,9 @@ from fastapi import HTTPException
 from src.config import config
 from src.graph_client import graph_client
 from src.ai_service import ai_service
+from src.indexer import mail_indexer
+from src.retrieval import retrieve_citations
+from src.verifier import verify_and_filter
 import asyncio
 import logging
 
@@ -109,6 +112,12 @@ class WebhookHandler:
             drafts_to_sender = graph_client.get_drafts_to_recipient(sender_email, limit=25)
             email_history = prior_from_sender + drafts_to_sender
 
+            # Index the new prior context incrementally
+            try:
+                mail_indexer.upsert_messages(email_history)
+            except Exception:
+                pass
+
             similar_context, similar_email = ai_service.find_similar_email_responses(message, email_history)
 
             # Build compact history context for the agent
@@ -122,7 +131,19 @@ class WebhookHandler:
 
             history_context = summarize(prior_from_sender) + ("\n\n--- Drafts ---\n" + summarize(drafts_to_sender) if drafts_to_sender else "")
 
+            # Retrieve mailbox-wide citations for topic terms (subject words)
+            query_terms = [w for w in (subject or "").split() if len(w) > 3][:6]
+            citations = retrieve_citations(query_terms, sender=None, top_k=5)
+
             draft_content = ai_service.generate_draft_reply(message, similar_context, history_context)
+            # Verifier pass: remove sentences that include risky tokens not present in evidence
+            evidence_text = "\n\n".join([
+                subject or "",
+                summarize(prior_from_sender),
+                summarize(drafts_to_sender)
+            ])
+            v = verify_and_filter(draft_content, evidence_text)
+            draft_content = v.get("filtered_text", draft_content)
             
             formatted_draft = self._format_draft_content(draft_content)
             
@@ -141,6 +162,7 @@ class WebhookHandler:
                     "draft_preview": draft_text_preview,
                     "similar_sender": (similar_email or {}).get("from", {}).get("emailAddress", {}).get("address", "") if similar_email else "",
                     "similar_subject": (similar_email or {}).get("subject", "") if similar_email else "",
+                    "citations": [{"id": c.get("id"), "subject": c.get("subject", ""), "date": c.get("receivedDateTime", "")} for c in citations],
                     "created_at": datetime.now(timezone.utc).isoformat(),
                 })
             except Exception:
