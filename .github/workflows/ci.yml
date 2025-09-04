@@ -30,7 +30,7 @@ jobs:
 
   local-endpoints:
     runs-on: ubuntu-latest
-    needs: unit-retrieval
+    # independent job
     steps:
       - uses: actions/checkout@v4
 
@@ -76,7 +76,7 @@ jobs:
 
   ngrok:
     runs-on: ubuntu-latest
-    needs: local-endpoints
+    if: ${{ secrets.NGROK_AUTHTOKEN != '' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -119,7 +119,7 @@ jobs:
       - name: Configure ngrok
         env:
           NGROK_AUTHTOKEN: ${{ secrets.NGROK_AUTHTOKEN }}
-        run: ngrok config add-authtoken "$NGROK_AUTHTOKEN"
+        run: ngrok authtoken "$NGROK_AUTHTOKEN"
 
       - name: Start ngrok and capture URL
         run: |
@@ -134,7 +134,7 @@ jobs:
 
   e2e:
     runs-on: ubuntu-latest
-    needs: ngrok
+    if: ${{ secrets.CLIENT_ID != '' && secrets.CLIENT_SECRET != '' && secrets.TENANT_ID != '' && secrets.OPENAI_API_KEY != '' && secrets.MS_USERNAME != '' && secrets.MS_PASSWORD != '' && secrets.NGROK_AUTHTOKEN != '' }}
     env:
       CLIENT_ID: ${{ secrets.CLIENT_ID }}
       CLIENT_SECRET: ${{ secrets.CLIENT_SECRET }}
@@ -203,7 +203,7 @@ jobs:
           done
 
       - name: Configure ngrok
-        run: ngrok config add-authtoken "$NGROK_AUTHTOKEN"
+        run: ngrok authtoken "$NGROK_AUTHTOKEN"
 
       - name: Run E2E
         run: uv run python -m tests.test_e2e
