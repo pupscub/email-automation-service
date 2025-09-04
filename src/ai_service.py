@@ -7,6 +7,7 @@ from src.prompts import (
     build_prompt_with_similar,
     build_prompt_with_history,
     SYSTEM_PROMPT,
+    build_clarification_prompt,
 )
 
 class AIService:
@@ -102,5 +103,26 @@ class AIService:
         
         except Exception as e:
             return f"Thank you for your email. I'll review this and get back to you shortly.\n\nBest regards"
+
+    def generate_clarification_message(self, current_email: Dict[str, Any], missing_slots: List[str]) -> str:
+        current_context = self.extract_email_context(current_email)
+        prompt = build_clarification_prompt(current_context, missing_slots)
+        try:
+            response = self.client.chat.completions.create(
+                model="gpt-4",
+                messages=[
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": prompt}
+                ],
+                max_tokens=200,
+                temperature=0.5
+            )
+            return response.choices[0].message.content.strip()
+        except Exception:
+            # Fallback minimal clarification
+            if not missing_slots:
+                return "Could you please clarify the missing details so I can proceed?"
+            fields = ", ".join(missing_slots)
+            return f"Could you please confirm the following so I can proceed: {fields}?"
 
 ai_service = AIService()
