@@ -4,7 +4,6 @@ from datetime import datetime
 import threading
 
 from src.config import config
-from src.graph_client import graph_client
 
 
 SCHEMA_SQL = """
@@ -55,7 +54,7 @@ class MailIndexer:
             conn.row_factory = sqlite3.Row
             if sender:
                 cur = conn.execute(
-                    "SELECT * FROM messages WHERE lower(subject) LIKE ? OR lower(body_preview) LIKE ? AND lower(sender)=? ORDER BY received_utc DESC LIMIT ?",
+                    "SELECT * FROM messages WHERE (lower(subject) LIKE ? OR lower(body_preview) LIKE ?) AND lower(sender)=? ORDER BY received_utc DESC LIMIT ?",
                     (q, q, sender.lower(), top_k)
                 )
             else:
