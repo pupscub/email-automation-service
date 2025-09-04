@@ -21,7 +21,7 @@ var/
 wheels/
 pip-wheel-metadata/
 share/python-wheels/
-*.egg-info/
+*egg-info/
 .installed.cfg
 *.egg
 MANIFEST
@@ -44,3 +44,4 @@ logs/
 Thumbs.db
 
 problem_statement.pdf
+mail_index.sqlite

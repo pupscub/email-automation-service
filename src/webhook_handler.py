@@ -25,6 +25,8 @@ class WebhookHandler:
         self.recent_drafts = deque(maxlen=50)
         # Dedup map: message_id -> last processed timestamp
         self.recently_processed = {}
+        # Conversation-level clarification state: conversation_id -> {count:int, last:iso}
+        self.clarify_state = {}
     
     def validate_webhook_signature(self, body: bytes, signature: str) -> bool:
         if not config.webhook_secret:
@@ -106,6 +108,7 @@ class WebhookHandler:
             sender_email = message.get("from", {}).get("emailAddress", {}).get("address", "")
             subject = message.get("subject", "")
             body_content = message.get("body", {}).get("content", "")
+            conversation_id = message.get("conversationId", "")
             
             # Prior context: emails from sender + drafts to that sender
             prior_from_sender = graph_client.get_messages_from_sender(sender_email, days=365, limit=50)
@@ -135,6 +138,24 @@ class WebhookHandler:
             query_terms = [w for w in (subject or "").split() if len(w) > 3][:6]
             citations = retrieve_citations(query_terms, sender=None, top_k=5)
 
+            # --- Clarification control: detect missing blocking slots ---
+            missing_slots = self._detect_missing_slots(subject, body_content)
+            low_confidence = len(citations) == 0 and similar_email is None
+            clarify_info = self.clarify_state.get(conversation_id, {"count": 0}) if conversation_id else {"count": 0}
+
+            if missing_slots and low_confidence and clarify_info.get("count", 0) < 1:
+                # Ask a single aggregated clarification, then record state
+                clarification_msg = ai_service.generate_clarification_message(message, missing_slots)
+                formatted = self._format_draft_content(clarification_msg)
+                graph_client.create_draft_reply(message_id, formatted)
+                try:
+                    self.clarify_state[conversation_id] = {"count": clarify_info.get("count", 0) + 1, "last": datetime.now(timezone.utc).isoformat()}
+                except Exception:
+                    pass
+                logger.info(f"Created clarification draft for conversation {conversation_id}")
+                return
+
+            # Otherwise, generate the best-effort reply
             draft_content = ai_service.generate_draft_reply(message, similar_context, history_context)
             # Verifier pass: remove sentences that include risky tokens not present in evidence
             evidence_text = "\n\n".join([
@@ -199,6 +220,22 @@ class WebhookHandler:
         terms.extend(body_words[:10])
         
         return list(set(terms))
+
+    def _detect_missing_slots(self, subject: str, body: str) -> list:
+        text = f"{subject}\n{body}"
+        slots = []
+        # Very lightweight heuristics: if question implies scheduling but no time/date present
+        if any(k in text.lower() for k in ["schedule", "availability", "meet", "call", "time", "tomorrow"]):
+            # Detect presence of a time/date regex
+            has_time = re.search(r"\b(\d{1,2}(:\d{2})?\s?(am|pm))\b", text.lower())
+            has_date = re.search(r"\b(mon|tue|wed|thu|fri|sat|sun|\d{1,2}[/-]\d{1,2})\b", text.lower())
+            if not (has_time or has_date):
+                slots.append("proposed time/date")
+        if any(k in text.lower() for k in ["minutes", "document", "attachment", "file"]):
+            has_attachment_ref = re.search(r"attach|attached|enclosed", text.lower())
+            if not has_attachment_ref:
+                slots.append("document/attachment reference")
+        return slots
     
     def _format_draft_content(self, content: str) -> str:
         if not content.startswith("<"):

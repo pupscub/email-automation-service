@@ -79,3 +79,21 @@ Requirements:
 Reply:"""
 
 
+def build_clarification_prompt(current_context: str, missing_slots: list[str]) -> str:
+    missing = ", ".join(missing_slots) if missing_slots else "the missing information"
+    return f"""
+You must ask a SINGLE concise clarification message that covers all missing blocking details at once.
+
+EVIDENCE — CURRENT EMAIL
+{current_context}
+
+Missing blocking slots: {missing}
+
+Rules:
+- Ask ONE message, bullet or short list is fine.
+- Be specific and actionable. Offer 2-3 options where possible.
+- Be polite and brief. Do not include any other content.
+
+Clarification message:
+"""
+
