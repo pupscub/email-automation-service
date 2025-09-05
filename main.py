@@ -9,10 +9,18 @@ from fastapi import FastAPI, HTTPException, Request, Depends
 from fastapi.responses import HTMLResponse, RedirectResponse, PlainTextResponse
 from fastapi.middleware.cors import CORSMiddleware
 
+from src.deps import (
+    get_config,
+    get_authenticator,
+    get_graph_client,
+    get_webhook_handler,
+)
 from src.config import config
-from src.auth import authenticator
-from src.graph_client import graph_client
-from src.webhook_handler import webhook_handler
+from src.auth import GraphAuthenticator
+from src.graph_client import GraphClient
+from src.webhook_handler import WebhookHandler
+from src.models.schemas import SendTestEmailRequest, StartWithUrlRequest, RecentDraft
+from src.graph_client import graph_client as _graph_client_singleton
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -28,7 +36,8 @@ async def lifespan(app: FastAPI):
     global subscription_id
     if subscription_id:
         try:
-            graph_client.delete_webhook_subscription(subscription_id)
+            # Use singleton here since Depends is not available in lifespan
+            _graph_client_singleton.delete_webhook_subscription(subscription_id)
             logger.info("Deleted webhook subscription")
         except Exception as e:
             logger.error(f"Error deleting subscription: {e}")
@@ -49,7 +58,8 @@ app.add_middleware(
 )
 
 @app.get("/", response_class=HTMLResponse)
-async def root():
+async def root(authenticator: GraphAuthenticator = Depends(get_authenticator),
+               graph_client: GraphClient = Depends(get_graph_client)):
     token = authenticator.get_token_silent()
     if token:
         user_info = graph_client.get_user_info()
@@ -151,7 +161,7 @@ async def root():
         """
 
 @app.get("/auth/callback")
-async def auth_callback(request: Request):
+async def auth_callback(request: Request, authenticator: GraphAuthenticator = Depends(get_authenticator)):
     global claims_challenge
     code = request.query_params.get("code")
     if not code:
@@ -170,7 +180,7 @@ async def auth_callback(request: Request):
 
 @app.get("/webhook")
 @app.post("/webhook")
-async def webhook_endpoint(request: Request):
+async def webhook_endpoint(request: Request, handler: WebhookHandler = Depends(get_webhook_handler)):
     # Check for validation token in query parameters first
     validation_token = request.query_params.get("validationToken")
     
@@ -189,7 +199,7 @@ async def webhook_endpoint(request: Request):
             if body:
                 try:
                     notification_data = json.loads(body)
-                    result = await webhook_handler.handle_webhook_notification(notification_data)
+                    result = await handler.handle_webhook_notification(notification_data)
                     return result
                 except json.JSONDecodeError:
                     # If it's not JSON, might be validation data
@@ -207,7 +217,8 @@ async def webhook_endpoint(request: Request):
 
 # In main.py, make the endpoint async
 @app.post("/webhook/start")
-async def start_webhook_monitoring():
+async def start_webhook_monitoring(authenticator: GraphAuthenticator = Depends(get_authenticator),
+                                   graph_client: GraphClient = Depends(get_graph_client)):
     global subscription_id
     
     if subscription_id:
@@ -240,17 +251,15 @@ async def start_webhook_monitoring():
         return f"Error starting monitoring: {str(e)}"
 
 @app.post("/webhook/start_with_url")
-async def start_webhook_with_url(request: Request):
+async def start_webhook_with_url(payload: StartWithUrlRequest,
+                                 graph_client: GraphClient = Depends(get_graph_client)):
     """Start monitoring with a provided webhook base URL at runtime.
     Body: { "webhook_url": "https://....ngrok-free.app" }
     """
     global subscription_id
     if subscription_id:
         return "Monitoring is already active"
-    payload = await request.json()
-    base_url = payload.get("webhook_url")
-    if not base_url or not base_url.startswith("https://"):
-        raise HTTPException(status_code=400, detail="Invalid webhook_url")
+    base_url = str(payload.webhook_url)
     try:
         webhook_endpoint = f"{base_url.rstrip('/')}/webhook"
         logger.info(f"Creating webhook subscription to: {webhook_endpoint}")
@@ -263,20 +272,20 @@ async def start_webhook_with_url(request: Request):
         return f"Error starting monitoring: {str(e)}"
 
 @app.post("/debug/send_test_email")
-async def send_test_email(request: Request):
+async def send_test_email(payload: SendTestEmailRequest,
+                          graph_client: GraphClient = Depends(get_graph_client)):
     """Send a test email to the signed-in user for E2E checks.
     Body: { "subject": "...", "body": "<p>...</p>" }
     """
     user = graph_client.get_user_info()
     to_addr = user.get("mail") or user.get("userPrincipalName")
-    payload = await request.json()
-    subject = payload.get("subject", "Test email from E2E script")
-    body = payload.get("body", "<p>Hello from E2E</p>")
+    subject = payload.subject or "Test email from E2E script"
+    body = payload.body or "<p>Hello from E2E</p>"
     graph_client.send_mail(to_addr, subject, body)
     return {"ok": True}
 
 @app.post("/webhook/stop")
-async def stop_webhook_monitoring():
+async def stop_webhook_monitoring(graph_client: GraphClient = Depends(get_graph_client)):
     global subscription_id
     
     if not subscription_id:
@@ -296,7 +305,7 @@ async def stop_webhook_monitoring():
         return f"Error stopping monitoring: {str(e)}"
 
 @app.get("/health")
-async def health_check():
+async def health_check(authenticator: GraphAuthenticator = Depends(get_authenticator)):
     token = authenticator.get_token_silent()
     return {
         "status": "healthy",
@@ -305,13 +314,20 @@ async def health_check():
     }
 
 @app.get("/ui/recent-drafts")
-async def recent_drafts():
+async def recent_drafts(handler: WebhookHandler = Depends(get_webhook_handler)):
     # Provide recent drafts recorded by the webhook handler for UI display
-    items = list(webhook_handler.recent_drafts) if hasattr(webhook_handler, 'recent_drafts') else []
-    return {"items": items}
+    items = list(handler.recent_drafts) if hasattr(handler, 'recent_drafts') else []
+    # Validation into Pydantic models (best-effort)
+    safe_items = []
+    for it in items:
+        try:
+            safe_items.append(RecentDraft(**it).dict())
+        except Exception:
+            safe_items.append(it)
+    return {"items": safe_items}
 
 @app.get("/debug/me/messages")
-async def debug_list_messages():
+async def debug_list_messages(graph_client: GraphClient = Depends(get_graph_client)):
     try:
         # Try to list a few recent messages to validate token permissions
         emails = graph_client.get_recent_emails(days=7, limit=5)
@@ -320,7 +336,7 @@ async def debug_list_messages():
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/debug/token")
-async def debug_token():
+async def debug_token(authenticator: GraphAuthenticator = Depends(get_authenticator)):
     try:
         token = authenticator.get_token_silent()
         if not token:
@@ -331,7 +347,7 @@ async def debug_token():
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/debug/token/claims")
-async def debug_token_claims():
+async def debug_token_claims(authenticator: GraphAuthenticator = Depends(get_authenticator)):
     import base64
     import json as _json
     try:
@@ -353,7 +369,7 @@ async def debug_token_claims():
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/debug/me/messages/raw")
-async def debug_messages_raw():
+async def debug_messages_raw(authenticator: GraphAuthenticator = Depends(get_authenticator)):
     import requests as _requests
     global claims_challenge
     try:
@@ -392,7 +408,7 @@ async def debug_retrieval(q: str = "test", sender: str | None = None):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 @app.get("/debug/me")
-async def debug_me():
+async def debug_me(graph_client: GraphClient = Depends(get_graph_client)):
     try:
         info = graph_client.get_user_info()
         return {"ok": True, "user": {k: info.get(k) for k in ["id", "userPrincipalName", "mail", "displayName"]}}
@@ -400,7 +416,7 @@ async def debug_me():
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/debug/me/mailfolders")
-async def debug_mail_folders():
+async def debug_mail_folders(authenticator: GraphAuthenticator = Depends(get_authenticator)):
     import requests as _requests
     try:
         token = authenticator.get_token_silent()
